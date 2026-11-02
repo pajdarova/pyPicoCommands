@@ -38,6 +38,12 @@ pip install pypicocommands      # once published; until then: pip install .
 - PicoSDK or PicoScope 7 installed (the driver DLLs; set `PICO_SDK_DIR` if they
   are in a non-standard place). Not needed for `OPEN SIM`.
 
+## Documentation
+
+`MANUAL.md` explains the command language and walks through the usual
+scenarios (single and rapid capture, triggers, streaming, generator, ETS)
+with examples; `HELP` prints the command list.
+
 ## Tests and tools
 
 ```bash

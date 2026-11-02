@@ -1,6 +1,6 @@
 # *****************************************************************************
-# Independent module for PicoScope oscilloscopes driven through pyPicoSDK
-# (Pico Technology's official Python package) by short text commands.
+# Text-command interface to PicoScope oscilloscopes (2000/3000/4000/5000
+# series); the PicoSDK drivers are loaded directly through ctypes.
 # *****************************************************************************
 """
 pypicocommands.picoscope - text-command interface to PicoScope 2000, 3000, 4000
