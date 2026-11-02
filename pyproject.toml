@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pypicocommands"
+dynamic = ["version"]
+description = "Control PicoScope 2000/3000/4000/5000 series oscilloscopes with short text commands"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy"]
+authors = [{ name = "Andrea Dagmar Pajdarova", email = "pajdarova@gmail.com" }]
+keywords = ["picoscope", "oscilloscope", "pico technology", "instrument control", "ps5000a"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Hardware",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.scripts]
+pypicocommands = "pypicocommands.picoscope:console"
+
+[tool.setuptools.dynamic]
+version = { attr = "pypicocommands.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
