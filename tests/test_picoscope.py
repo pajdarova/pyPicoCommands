@@ -620,3 +620,70 @@ class TestOpen(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAllChannels(unittest.TestCase):
+    """ALL <channel command>: the same command for every analog channel."""
+
+    def open(self, model="5443D"):
+        ps = Picoscope()
+        ps.cmd(f"OPEN SIM {model}")
+        self.addCleanup(ps.cmd, "CLOSE")
+        return ps
+
+    def test_sets_every_channel(self):
+        ps = self.open()
+        ps.cmd("ALL COUPLING AC; ALL RANGE 2; ALL OFFSET 0.1; ALL FACTOR 10; ALL BW 20MHZ")
+        for ch in "ABCD":
+            self.assertEqual(ps.cmd(f"{ch} COUPLING?"), "AC")
+            self.assertEqual(ps.cmd(f"{ch} RANGE?"), "2")
+            self.assertEqual(ps.cmd(f"{ch} FACTOR?"), "10")
+        self.assertEqual(ps.cmd("ALL COUPLING?"), "AC AC AC AC")
+
+    def test_all_off_then_one_on(self):
+        ps = self.open()
+        ps.cmd("ALL OFF; A ON")
+        self.assertEqual(ps.cmd("A?").split()[0], "ON")
+        for ch in "BCD":
+            self.assertEqual(ps.cmd(f"{ch}?").split()[0], "OFF")
+
+    def test_summary_lines(self):
+        ps = self.open()
+        lines = ps.cmd("ALL?").splitlines()
+        self.assertEqual([ln[:2] for ln in lines], ["A:", "B:", "C:", "D:"])
+
+    def test_covers_the_channels_of_the_model(self):
+        ps = self.open("4824A")
+        ps.cmd("ALL ON; ALL RANGE 5")
+        self.assertEqual(ps.cmd("ALL RANGE?"), "5 5 5 5 5 5 5 5")
+        ps2 = self.open("2408B")
+        self.assertEqual(len(ps2.cmd("ALL RANGE?").split()), 4)
+
+    def test_before_open_means_a_to_d(self):
+        ps = Picoscope()
+        ps.cmd("ALL COUPLING AC")
+        self.assertEqual(ps.cmd("ALL COUPLING?"), "AC AC AC AC")
+
+    def test_errors_leave_nothing_half_done(self):
+        ps = self.open()
+        with self.assertRaises(ExceptionPicoscope):
+            ps.cmd("ALL RANGE nonsense")
+        with self.assertRaises(ExceptionPicoscope):
+            ps.cmd("ALL")
+        self.assertEqual(ps.cmd("ALL RANGE?"), "5 5 5 5")
+
+    def test_rollback_when_the_driver_rejects_one_channel(self):
+        ps = self.open()
+        original = ps._apply_channel
+        calls = []
+
+        def failing(name):
+            calls.append(name)
+            if name == "C" and calls.count("C") == 1:
+                raise ExceptionPicoscope("driver rejected C")
+            return original(name)
+        ps._apply_channel = failing
+        with self.assertRaises(ExceptionPicoscope):
+            ps.cmd("ALL RANGE 1")
+        ps._apply_channel = original
+        self.assertEqual(ps.cmd("ALL RANGE?"), "5 5 5 5")

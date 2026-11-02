@@ -2365,6 +2365,8 @@ class Picoscope:
             if name in _CHANNELS and len(name) == 1:
                 self._check_channel(name)
                 return self._cmd_channel(name, args, head.endswith("?"))
+            if head in ("ALL", "ALL?"):
+                return self._cmd_all(args, head.endswith("?"))
             if head in ("D0", "D1", "D0?", "D1?"):
                 return self._cmd_digital(head.rstrip("?"), args,
                                          head.endswith("?"))
@@ -2843,6 +2845,42 @@ class Picoscope:
             self._apply_channel(name)
         except ExceptionPicoscope:
             ch.enabled, ch.coupling, ch.range_idx, ch.offset, ch.bw = old
+            raise
+        return None
+
+    def _cmd_all(self, args, summary):
+        """ALL <channel command> : the same channel command for every analog
+        channel of the model, e.g. ``ALL COUPLING DC``, ``ALL RANGE 2``,
+        ``ALL OFF; A ON``. Before OPEN it means A-D.
+
+        * ``ALL?`` gives one summary line per channel; ``ALL <KEY>?`` gives
+          the values of all channels in the order A, B, ... separated by
+          spaces (OFFSETLIMITS pairs are separated by ``;``).
+        * The command is all or nothing: when the driver rejects it for one
+          channel, the channels already changed are restored.
+        """
+        names = _CHANNELS[:self._n_channels]
+        if summary:
+            return "\n".join(f"{n}: {self._cmd_channel(n, [], True)}"
+                             for n in names)
+        key, query, _rest = self._split_query(args)
+        if query:
+            sep = " ; " if key == "OFFSETLIMITS" else " "
+            return sep.join(self._cmd_channel(n, args, False) for n in names)
+        fields = ("enabled", "coupling", "range_idx", "offset", "bw",
+                  "factor")
+        saved = {n: tuple(getattr(self.channels[n], f) for f in fields)
+                 for n in names}
+        done = []
+        try:
+            for n in names:
+                self._cmd_channel(n, args, False)
+                done.append(n)
+        except ExceptionPicoscope:
+            for n in done:
+                for f, v in zip(fields, saved[n]):
+                    setattr(self.channels[n], f, v)
+                self._apply_channel(n)
             raise
         return None
 
@@ -3753,6 +3791,10 @@ _HELP = [
     ("X FACTOR <n>", "Output scale: returned volts are multiplied by n "
                      "(e.g. 10 for a 10:1 probe); default 1."),
     ("X?", "Summary of channel X."),
+    ("ALL <channel command>", "The same command for every analog channel of "
+                              "the model, e.g. ALL COUPLING DC, ALL OFF; A ON "
+                              "(before OPEN: A-D). All or nothing."),
+    ("ALL?, ALL <KEY>?", "Summary lines of all channels / one value per channel."),
     ("D0 ON|OFF, D1 ON|OFF", "MSO digital ports (D0 = bits 0-7, D1 = 8-15). "
                              "NOT TESTED."),
     ("D0 LEVEL <V>", "Logic threshold of the port (+-5 V). NOT TESTED."),

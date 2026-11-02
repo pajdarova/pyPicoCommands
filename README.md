@@ -21,7 +21,9 @@ ps.cmd("CLOSE")
 ```
 
 Command groups: `OSC` (acquisition), `TRG` (trigger), `GEN` (signal
-generator), channel commands `A ...` to `H ...`. Send `HELP` for the full list.
+generator), channel commands `A ...` to `H ...`, and `ALL ...` to give the same
+channel command to every channel (`ALL COUPLING DC`, `ALL OFF; A ON`). Send
+`HELP` for the full list.
 `OPEN SIM [variant]` opens a simulated instrument, no hardware or driver needed.
 
 ## Install
@@ -39,7 +41,7 @@ pip install pypicocommands      # once published; until then: pip install .
 ## Tests and tools
 
 ```bash
-python -m unittest discover tests          # 68 tests, run on the simulator
+python -m unittest discover tests          # 75 tests, run on the simulator
 python -m pypicocommands.identify [--open] # list drivers and connected units
 python -m pypicocommands [SIM]             # interactive command console
 ```
