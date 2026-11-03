@@ -13,7 +13,8 @@ Contents
 4. [Differences between the series](#4-differences-between-the-series)
 5. [Known limits and pitfalls](#5-known-limits-and-pitfalls)
 6. [Troubleshooting](#6-troubleshooting)
-7. [Command reference](#7-command-reference)
+7. [Command reference by group](#7-command-reference-by-group)
+   (instrument and control, `OSC`, channels, `TRG`, capture and data, `GEN`)
 
 ---
 
@@ -413,17 +414,227 @@ the PicoStatus name); the codes are listed in `PicoStatus.h` of the PicoSDK.
 
 ---
 
-## 7. Command reference
+## 7. Command reference by group
 
-The complete list is printed by the `HELP` command (and `HELP? <prefix>`
-filters it), for example:
+All commands of one group together. `<x>` is a value, `a|b` means "one of",
+`[x]` is optional. Every setting command that has a value can be queried with
+a `?` after the key (`OSC INTERVAL?`, `A RANGE?`, `TRG AUTO?`, `GEN FREQ?`);
+the group summary (`OSC?`, `A?`, `TRG?`, `GEN?`) shows everything at once.
+`HELP` prints the one-line version of this list and `HELP? <prefix>` filters
+it (`HELP? GEN`).
 
-```python
-print(ps.cmd("HELP"))
-print(ps.cmd("HELP? TRG"))
-```
+Settings that change the capture (most `OSC`, channel and `TRG` settings)
+are refused with `a capture is running, use STOP first` while a capture runs.
+Changing one after a capture discards the data of that capture.
 
-Python methods besides `cmd()`:
+### 7.1 Instrument and control
+
+- `OPEN [serial]`, `OPEN <family> [serial]`, `OPEN SIM [variant]`: open the
+  first instrument found, the one with that serial number, the first one of a
+  driver family (`PS2000A`, `PS3000A`, `PS4000A`, `PS5000A`), or a simulated
+  instrument. Sends all settings stored so far.
+- `CLOSE`: stops, sets the generator output to 0 V and closes the instrument.
+- `DEVICES?`: connected instruments that are not open, `FAMILY:serial,...`
+  (`NONE` when there is none).
+- `IDN?`: `<model> <serial>`, e.g. `5443D JY064/0018`. `INFO?`: all unit
+  information strings.
+- `CAPS?`: what the model can do, e.g. `FAMILY=PS5000A VARIANT=5443D
+  CHANNELS=4 MSO=OFF BITS=8,12,14,15,16 PULSEWIDTH=ON TRIGINFO=ON
+  GENERATOR=ON SIM=OFF`.
+- `STATE?`: `CLOSED`, `IDLE`, `ARMED` (waiting for the trigger), `READY`
+  (data available) or `STREAMING`.
+- `POWER?`: power source `DC`, `USB` or `USB2`. `POWER DC|USB`: confirm a
+  change of the power source after the driver asked for it.
+- `LED <count>|ON|STOP`: flash the front LED, `ON` without end.
+- `RESET`: all settings back to the defaults (also `OSC RESET`).
+- `HELP`, `HELP? [prefix]`: command list.
+
+### 7.2 Acquisition: `OSC`
+
+Defaults: 8 bits, `INTERVAL` 1 µs, `PRETRIGGER` 100, `POSTTRIGGER` 1000,
+`RECORDS` 1, block mode, no downsampling, `STREAMBUF` 100000, `AUTOSTOP` off,
+ETS off. `OSC?` returns e.g. `BITS=8 INTERVAL=1e-06 PRETRIGGER=100
+POSTTRIGGER=1000 RECORDS=1 MODE=BLOCK DOWNSAMPLE=NONE,1 ETS=OFF
+STREAMBUF=100000 AUTOSTOP=OFF`.
+
+**Resolution**
+- `OSC BITS 8|12|14|15|16`: resolution. Selectable on the 5000 series only
+  (15 bits: at most 2 channels, 16 bits: 1 channel); the other series have a
+  fixed resolution and refuse any other value as not supported.
+
+**Timebase**
+- `OSC INTERVAL <s>` (alias `OSC TIMEBASE`): requested sampling interval. The
+  longest interval the scope offers that does not exceed it is used.
+  `OSC INTERVAL?` gives the interval actually used after `ARM`/`RUN`, the
+  requested one before.
+- `OSC TBINDEX <n>`: set the driver's timebase index directly (overrides
+  `OSC INTERVAL`); `OSC TBINDEX?` gives the index of the last run.
+- `OSC MININTERVAL?`: the fastest interval for the enabled channels and the
+  resolution.
+
+**Record length and number**
+- `OSC PRETRIGGER <n>`, `OSC POSTTRIGGER <n>`: samples before and after the
+  trigger. `OSC SAMPLES?` is their sum (the length of one record).
+- `OSC RECORDS <n>`: records per run (rapid block); 1 is a single block.
+- `OSC MAXSAMPLES?`: the most samples per record that fit into the memory for
+  the current settings. `OSC MAXRECORDS?`: the most records (memory segments).
+
+**Mode and data reduction**
+- `OSC MODE BLOCK|STREAM`: block capture (the default) or streaming.
+- `OSC DOWNSAMPLE NONE|AGGREGATE|DECIMATE|AVERAGE [ratio]`: reduction by the
+  driver. `AGGREGATE` returns the maximum and the minimum of every `ratio`
+  samples. `OSC DOWNSAMPLE?` gives mode and ratio.
+- `OSC STREAMBUF <n>`: length of the streaming transfer buffer in samples.
+- `OSC AUTOSTOP ON|OFF`: streaming ends after `PRETRIGGER + POSTTRIGGER`
+  samples.
+
+**Equivalent-time sampling**
+- `OSC ETS OFF|FAST|SLOW [cycles] [interleave]`: ETS for repetitive signals.
+  Defaults for cycles and interleave: 20 and 10; `cycles` must be at least
+  `interleave`. Channel A only, block mode, edge trigger (recipe 3.7).
+  `OSC ETS?` gives mode, cycles, interleave.
+
+**Reset**
+- `OSC RESET`: the same as `RESET`.
+
+### 7.3 Channels: `A` to `H`, `ALL`, `D0`/`D1`
+
+`A` to `D` on most scopes, `A` to `H` on 8-channel models; a channel the
+model does not have raises `ExceptionNotSupported`. Defaults: only `A` is on,
+DC coupling, ±5 V range, offset 0, full bandwidth, `FACTOR` 1. `A?` returns
+e.g. `ON COUPLING=DC RANGE=5 OFFSET=0 BW=FULL FACTOR=1`.
+
+- `X ON|OFF`: enable or disable the channel (`X` is `A`...`H`).
+- `X COUPLING DC|AC`: input coupling. After switching to AC the signal needs
+  about a second to settle.
+- `X RANGE <V>`: the smallest input range that covers `<V>`: ±10 mV, 20 mV,
+  50 mV, 100 mV, 200 mV, 500 mV, 1 V, 2 V, 5 V, 10 V, 20 V (50, 100 and 200 V
+  on models that have them). `A RANGE 1.5` selects ±2 V. A range the model
+  lacks is refused as not supported.
+- `X OFFSET <V>`: analog offset. It shifts the window of the input range; the
+  returned volts are corrected, so they still show the input voltage.
+  `X OFFSETLIMITS?` gives the allowed minimum and maximum for the current
+  range and coupling. Trigger levels are compared after the offset is added.
+- `X BW FULL|20MHZ`: bandwidth limiter (models that have one).
+- `X FACTOR <n>`: output scale. The volts returned by `get_float`, `DATA?` and
+  `get_stream` are multiplied by `n` (for example 10 for a 10:1 probe). Ranges,
+  offsets and trigger levels stay in input volts. `n` must not be zero.
+- `X?`: summary of the channel.
+- `ALL <channel command>`: the same channel command for every analog channel
+  of the model (`ALL COUPLING DC`, `ALL RANGE 2`, `ALL OFF`). `ALL?` gives one
+  summary line per channel, `ALL <KEY>?` one value per channel. All or
+  nothing.
+- `D0 ON|OFF`, `D1 ON|OFF`, `D0 LEVEL <V>`, `D1 LEVEL <V>`: digital ports of
+  MSO models (`D0` is bits 0-7, `D1` bits 8-15) and their logic threshold
+  (default 1.5 V). Not tested on hardware.
+
+### 7.4 Trigger: `TRG`
+
+Nothing is triggered until a source is set (`TRG?` returns `OFF`, the scope
+runs free). Defaults of a source: `RISING`, level 0 V, lower level 0 V,
+hysteresis `AUTO` (1 % of the full scale). `LOGIC` `AND`, `DELAY` 0, `AUTO`
+0 (wait forever). `TRG?` returns e.g. `LOGIC=AND A=RISING,0.5,0,AUTO DELAY=0
+AUTO=0`. The trigger is sent to the scope by `ARM`/`RUN`.
+
+**Quick setup**
+- `TRG EDGE <src> RISING|FALLING|BOTH|ABOVE|BELOW <V>`: clears the trigger and
+  sets one source. `<src>` is `A`...`H` or `EXT` (the external input, ±5 V;
+  only `RISING`, `FALLING` and `BOTH` work there).
+
+**Sources, one at a time** (`<src>` is `A`...`H` or `EXT`; the first setting
+creates the source)
+- `TRG <src> DIR <direction>`: what triggers (table below).
+- `TRG <src> LEVEL <V>`: threshold; the upper threshold of a window.
+- `TRG <src> LOWER <V>`: lower threshold of a window or runt, and the
+  threshold of the `...LOWER` directions.
+- `TRG <src> HYST <V>|AUTO`: hysteresis.
+- `TRG <src> OFF`: remove the source from the trigger.
+
+| Direction | Triggers when |
+|-----------|---------------|
+| `RISING`, `FALLING`, `BOTH` | the signal crosses `LEVEL` upward, downward or either way |
+| `ABOVE`, `BELOW` | the signal is above or below `LEVEL` (a state; on EXT they are refused) |
+| `ABOVELOWER`, `BELOWLOWER`, `RISINGLOWER`, `FALLINGLOWER` | as above, but against `LOWER` |
+| `INSIDE`, `OUTSIDE` | the signal is inside or outside the window `LOWER`..`LEVEL` (a state) |
+| `ENTER`, `EXIT`, `ENTEROREXIT` | the signal enters or leaves the window, or either |
+| `POSITIVERUNT`, `NEGATIVERUNT` | a pulse that crosses one threshold but not the other |
+
+**Combining**
+- `TRG LOGIC AND|OR`: all sources at once, or any of them.
+- `TRG CLEAR` (or `TRG OFF`): remove every condition (free run).
+
+**Timing**
+- `TRG DELAY <samples>`: shift the trigger point by that many samples after
+  the trigger.
+- `TRG AUTO <s>`: capture anyway after this time without a trigger; 0 waits
+  forever. The 2000, 3000 and 4000 series round it up to whole milliseconds.
+
+**Pulse-width qualifier** (not in the 4000 series; unreliable on the 5443D,
+see section 5)
+- `TRG PW TYPE NONE|LESS|GREATER|INSIDE|OUTSIDE`: how the pulse width is
+  judged against the limits.
+- `TRG PW SOURCE <src>`: channel of the pulse. `TRG PW DIR <direction>`: edge
+  that ends the pulse (default `FALLING`). `TRG PW LEVEL <V>|AUTO`: threshold
+  (`AUTO` uses the `LEVEL` of the source).
+- `TRG PW LOWER <s>`, `TRG PW UPPER <s>`: the pulse width limits in seconds.
+
+**Digital and extras**
+- `TRG DIG <bit> LOW|HIGH|RISING|FALLING|BOTH|X`: condition on a digital
+  input, bit 0-15; `X` removes it. MSO only, not tested on hardware.
+- `TRG WITHINPRE ON|OFF`: allow a trigger within the pre-trigger samples.
+  `TRG EDGEDETECT ON|OFF`: edge detection of the logic trigger output. Both
+  exist in the 5000 series only.
+
+### 7.5 Running a capture and reading it
+
+- `ARM`: send all settings to the scope without starting.
+- `RUN`: `ARM` and start; returns at once.
+- `WAIT [timeout]`: wait for the end of the capture and return `READY`,
+  `TIMEOUT` or `ABORTED`. Without a timeout it waits as long as it takes.
+- `STOP`: interrupt a capture, streaming or a data transfer (any thread).
+- `READY?`: `1` when the capture is complete, `0` otherwise (always `0` while
+  streaming).
+- `CAPTURES?`: records captured so far (also during a rapid block run).
+- `OVERFLOW?`: `<record>:<channels>` of every record that exceeded the input
+  range, e.g. `0:A 3:AB`, or `NONE`; while streaming the channels only.
+- `TRIGTIME?`: trigger time offsets of the records in seconds, comma
+  separated. In Python `get_trigger_times()`.
+- `DATA? <src> [record]`: one record of channel `<src>` as comma separated
+  volts (`D0`/`D1`: integers). For short records only; use `get_float` for
+  large data.
+
+### 7.6 Signal generator: `GEN`
+
+Defaults: off, `SINE`, 1 kHz, 1 Vpp, offset 0, no sweep, `SHOTS` 0, `SWEEPS`
+0, trigger `NONE RISING`. `GEN?` returns e.g. `OFF WAVE=SINE FREQ=1000
+AMPL=1 OFFSET=0 SWEEP=OFF SHOTS=0 SWEEPS=0 TRIGGER=NONE,RISING`. Every
+change is sent to the scope at once. What the model cannot do raises
+`ExceptionNotSupported`.
+
+**Output**
+- `GEN ON|OFF`: start or stop the output (off means 0 V DC).
+- `GEN WAVE <wave>`: `SINE`, `SQUARE`, `TRIANGLE`, `RAMPUP`, `RAMPDOWN`,
+  `SINC`, `GAUSSIAN`, `HALFSINE`, `DC`, `NOISE`, `PRBS`, `ARB`.
+- `GEN FREQ <Hz>`: frequency (for `PRBS` the bit rate).
+- `GEN AMPL <Vpp>`: peak-to-peak amplitude. `GEN OFFSET <V>`: offset voltage.
+- `GEN ARB <v1,v2,...>`: load an arbitrary waveform, values from -1 to +1,
+  and select it. `GEN WAVE ARB` before loading one is an error.
+
+**Sweep**
+- `GEN SWEEP <stop Hz> <step Hz> <dwell s> UP|DOWN|UPDOWN|DOWNUP`: sweep from
+  `GEN FREQ` to the stop frequency. `GEN SWEEP OFF` ends it.
+
+**Bursts and triggering**
+- `GEN SHOTS <n>|CONT`: number of cycles after each generator trigger.
+  `GEN SWEEPS <n>|CONT`: the same for sweeps. 0 or `CONT` means continuous.
+- `GEN TRIGGER NONE|SCOPE|AUX|EXT|SOFT [RISING|FALLING|GATEHIGH|GATELOW]`:
+  what starts a burst and how.
+- `GEN EXTLEVEL <V>`: threshold of the external generator trigger.
+- `GEN FIRE`: software trigger (with `GEN TRIGGER SOFT`).
+- `GEN GATE ON|OFF`: software gate (with `GEN TRIGGER SOFT GATEHIGH` or
+  `GATELOW`).
+
+### 7.7 Python methods besides `cmd()`
 
 | Method | Purpose |
 |--------|---------|
